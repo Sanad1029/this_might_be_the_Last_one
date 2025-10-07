@@ -1,57 +1,48 @@
 #include <stdint.h>
 #include "tm4c123gh6pm.h"
 
-void SysTick_Handler(void);
-void GPIOF_Handler(void);
-void SysTick_Init(void);
-void PortF_Init(void);
+volatile int pwmLevel = 160;  
 
-int main(void) {
-    PortF_Init();
-    SysTick_Init();
-    
-    __asm(" CPSIE I"); /
-    
-    while(1) {
-        // Infinite loop
-    }
-}
+void PWM_Timer0A_Init(void) {
+    SYSCTL_RCGCTIMER_R |= 0x01;     
+    SYSCTL_RCGCGPIO_R  |= 0x02;     
+    GPIO_PORTB_AFSEL_R |= 0x40;     
+    GPIO_PORTB_PCTL_R  = (GPIO_PORTB_PCTL_R & ~0x0F000000) | 0x07000000; 
+    GPIO_PORTB_DEN_R   |= 0x40;    
 
-void SysTick_Init(void) {
-    NVIC_ST_CTRL_R = 0;
-    NVIC_ST_RELOAD_R = 16000000 - 1; 
-    NVIC_ST_CURRENT_R = 0;
-    NVIC_ST_CTRL_R = 0x07; 
+    TIMER0_CTL_R &= ~0x01;          
+    TIMER0_CFG_R = 0x04;           
+    TIMER0_TAMR_R = 0x0A;          
+    TIMER0_TAILR_R = 319;           
+    TIMER0_TAMATCHR_R = pwmLevel;  
+    TIMER0_CTL_R |= 0x01;          
 }
 
 void PortF_Init(void) {
-    SYSCTL_RCGCGPIO_R |= 0x20;
-    while((SYSCTL_PRGPIO_R & 0x20)==0){};
-    
-    GPIO_PORTF_LOCK_R = 0x4C4F434B;
-    GPIO_PORTF_CR_R = 0x1F;
-    
-    GPIO_PORTF_DIR_R = 0x0E; 
-    GPIO_PORTF_DEN_R = 0x1F;
-    GPIO_PORTF_PUR_R = 0x11;
-    
-    GPIO_PORTF_IS_R  &= ~0x11;
-    GPIO_PORTF_IBE_R &= ~0x11;
-    GPIO_PORTF_IEV_R &= ~0x11;
-    GPIO_PORTF_ICR_R = 0x11;
-    GPIO_PORTF_IM_R  |= 0x11;
-    
-    NVIC_PRI7_R = (NVIC_PRI7_R & 0xFF3FFFFF) | 0x00A00000;
-    NVIC_EN0_R  |= 0x40000000;
+    SYSCTL_RCGCGPIO_R |= 0x20;       
+    GPIO_PORTF_LOCK_R = 0x4C4F434B;   
+    GPIO_PORTF_CR_R   = 0x1F;        
+    GPIO_PORTF_DIR_R &= ~0x11;        
+    GPIO_PORTF_DEN_R |= 0x11;        
+    GPIO_PORTF_PUR_R |= 0x11;         
 }
 
-void SysTick_Handler(void) {
-    GPIO_PORTF_DATA_R ^= 0x02; 
-}
+int main(void) {
+    PortF_Init();
+    PWM_Timer0A_Init();
 
-void GPIOF_Handler(void) {
-    if(GPIO_PORTF_RIS_R & 0x01){
-        GPIO_PORTF_ICR_R = 0x01;
-        GPIO_PORTF_DATA_R ^= 0x04; 
+    while (1) {
+       
+        if ((GPIO_PORTF_DATA_R & 0x10) == 0) {
+            if (pwmLevel < 319) pwmLevel += 16;  
+            TIMER0_TAMATCHR_R = pwmLevel;
+            while ((GPIO_PORTF_DATA_R & 0x10) == 0);  
+        }
+
+        
+        if ((GPIO_PORTF_DATA_R & 0x01) == 0) {
+            if (pwmLevel > 0) pwmLevel -= 16;  
+            TIMER0_TAMATCHR_R = pwmLevel;
+            while ((GPIO_PORTF_DATA_R & 0x01) == 0);  
     }
 }
